@@ -299,15 +299,23 @@ while True:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
         cv2.imshow(WIN_NAME, combined)
 
-    # cv2.pollKey() is non-blocking and does not yield focus to other windows,
-    # which prevents arrow keys from stalling rendering on Windows.
-    # Windows sends a two-part sequence for arrow keys: first 0x00 then the
-    # virtual key code, so we drain all pending events each frame.
+    # Input: cv2.waitKeyEx(1) returns the FULL extended key code (unlike
+    # pollKey()/waitKey(), whose handling of special keys varies by HighGUI
+    # backend and OpenCV version — that inconsistency is why arrows/F11 worked
+    # on one Windows build but not another). The 1 ms timeout keeps it
+    # effectively non-blocking while still pumping the GUI event loop. We drain
+    # all pending events each frame (Windows emits a two-part sequence for some
+    # special keys).
     while True:
-        key = cv2.pollKey()
+        key = cv2.waitKeyEx(1)
         if key == -1:
             break
-        if key == 27:
+        # On Win32, special keys arrive as their virtual-key code in the high
+        # word (e.g. 0x260000 for Up). Matching on the high word makes detection
+        # independent of the exact full value a given build reports. On Linux/
+        # macOS the high word is 0, so the explicit code sets below handle those.
+        hw = (key >> 16) if key > 0 else -1
+        if key == 27:  # ESC
             print("Closing application…")
             cam.release()
             cv2.destroyAllWindows()
@@ -319,11 +327,10 @@ while True:
         if key == ord("r") or key == ord("R"):
             reset_data()
         # F11 — toggle fullscreen
-        # Windows: 7471104 (0x720000), 452 (0x1C4), 7536640 (0x730000), 7995392 (0x7A0000)
-        # Linux:   65480 (XK_F11)
-        # macOS:   63248
+        # Windows high word: VK_F11 = 0x7A; some builds report scancode 0x72.
+        # Linux: 65480 (XK_F11) | macOS: 63248
         F11_CODES = {7471104, 452, 7536640, 7995392, 65480, 63248}
-        if key in F11_CODES or (key > 0 and (key >> 16) == 0x72):
+        if key in F11_CODES or hw in (0x72, 0x7A):
             is_fullscreen = not is_fullscreen
             if is_fullscreen:
                 cv2.setWindowProperty(WIN_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -331,26 +338,24 @@ while True:
                 cv2.setWindowProperty(WIN_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
                 cv2.resizeWindow(WIN_NAME, DEFAULT_W, DEFAULT_H)
         # Up/Down arrow keys — adjust render interval
-        # Windows: Up=2490368 (0x260000), Down=2621440 (0x280000)
-        # Linux:   Up=65362 (XK_Up),      Down=65364 (XK_Down)
-        # macOS:   Up=63232,              Down=63233
+        # Windows high word: VK_UP = 0x26, VK_DOWN = 0x28
+        # Linux: Up=65362, Down=65364 | macOS: Up=63232, Down=63233
         UP_CODES   = {2490368, 65362, 63232}
         DOWN_CODES = {2621440, 65364, 63233}
-        if key in UP_CODES:
+        if key in UP_CODES or hw == 0x26:
             render_step_idx = min(render_step_idx + 1, len(RENDER_STEPS) - 1)
             print(f"Render interval: every {RENDER_STEPS[render_step_idx]} frame(s)")
-        if key in DOWN_CODES:
+        if key in DOWN_CODES or hw == 0x28:
             render_step_idx = max(render_step_idx - 1, 0)
             print(f"Render interval: every {RENDER_STEPS[render_step_idx]} frame(s)")
         # Left/Right arrow keys — switch camera
-        # Windows: Left=2424832 (0x250000), Right=2359296 (0x270000) -- note: right is lower
-        # Linux:   Left=65361 (XK_Left),    Right=65363 (XK_Right)
-        # macOS:   Left=63234,              Right=63235
+        # Windows high word: VK_LEFT = 0x25, VK_RIGHT = 0x27
+        # Linux: Left=65361, Right=65363 | macOS: Left=63234, Right=63235
         LEFT_CODES  = {2424832, 65361, 63234}
         RIGHT_CODES = {2359296, 65363, 63235}
-        if key in LEFT_CODES:
+        if key in LEFT_CODES or hw == 0x25:
             switch_camera(-1)
-        if key in RIGHT_CODES:
+        if key in RIGHT_CODES or hw == 0x27:
             switch_camera(+1)
 
 cam.release()
