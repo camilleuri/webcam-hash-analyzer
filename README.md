@@ -1,3 +1,5 @@
+This script was made as a demo for the CYPHER Lab at the University of Rhode Island.
+
 # Webcam Hash Analyzer
 
 A live visualization that hashes webcam frames with **BLAKE2b** and watches the
